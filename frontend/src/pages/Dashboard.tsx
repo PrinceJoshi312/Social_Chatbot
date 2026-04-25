@@ -1,112 +1,134 @@
 import React, { useState, useEffect } from 'react';
 import { useBusiness } from '../context/BusinessContext';
-import { MessageSquare, Database, Zap, Activity, Clock, FileText } from 'lucide-react';
+import { MessageSquare, Zap, Activity, Clock, FileText, Loader2, BarChart3 } from 'lucide-react';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import './Dashboard.css';
 
-interface Stats {
+interface DashboardStats {
   message_volume_7d: number;
   document_count: number;
   tool_usage: Record<string, number>;
-  recent_activity: Array<{
-    type: string;
-    data: any;
-    timestamp: string;
-  }>;
+  chart_data: any[];
+  recent_activity: any[];
 }
 
 export const Dashboard: React.FC = () => {
-  const { activeBusiness } = useBusiness();
-  const [stats, setStats] = useState<Stats | null>(null);
-  const [loading, setLoading] = useState(true);
+  const { activeBusiness, loading: contextLoading } = useBusiness();
+  const [stats, setStats] = useState<DashboardStats | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
 
   useEffect(() => {
-    if (activeBusiness) {
-      fetch(`/api/analytics/stats/${activeBusiness.id}`)
-        .then(res => res.json())
-        .then(data => {
-          setStats(data);
-          setLoading(false);
-        })
-        .catch(err => {
-          console.error("Failed to fetch stats", err);
-          setLoading(false);
-        });
+    if (!activeBusiness) {
+      setIsLoading(false);
+      return;
     }
+    
+    setIsLoading(true);
+    const token = localStorage.getItem('token');
+    fetch(`/api/analytics/stats/${activeBusiness.id}`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    })
+      .then(res => res.json())
+      .then(data => {
+        setStats(data);
+        setIsLoading(false);
+      })
+      .catch(() => setIsLoading(false));
   }, [activeBusiness]);
 
-  if (loading) return <div className="loading-container">Loading analytics...</div>;
+  // If the context is still loading businesses, show loading
+  if (contextLoading) return <div className="loading-state"><Loader2 className="spin" /> <span>Syncing Organization...</span></div>;
+
+  // If no bot exists yet
+  if (!activeBusiness && !isLoading) return (
+    <div className="dashboard-container">
+      <div className="empty-dashboard" style={{ textAlign: 'center', padding: '5rem 2rem' }}>
+        <Zap size={64} color="var(--primary)" style={{ marginBottom: '1.5rem', opacity: 0.3 }} />
+        <h2>Your Platform is Ready</h2>
+        <p style={{ color: '#64748b', maxWidth: '400px', margin: '1rem auto' }}>
+          You don't have any active bots yet. Start by choosing a plan and naming your first assistant.
+        </p>
+        <button className="primary-btn" onClick={() => window.location.href='/billing'} style={{ margin: '0 auto' }}>
+          Activate My First Bot
+        </button>
+      </div>
+    </div>
+  );
 
   return (
     <div className="dashboard-container">
       <header className="dashboard-header">
-        <h1>Dashboard Overview</h1>
-        <p>Insights for <strong>{activeBusiness?.name}</strong></p>
+        <div>
+          <h1>{activeBusiness?.name} Dashboard</h1>
+          <p>Real-time analytics for your bot.</p>
+        </div>
       </header>
 
-      <div className="stats-grid">
-        <div className="stat-card">
-          <div className="stat-icon blue"><MessageSquare size={24} /></div>
-          <div className="stat-info">
-            <h3>{stats?.message_volume_7d || 0}</h3>
-            <span>Messages (7d)</span>
+      {isLoading ? (
+        <div className="loading-state"><Loader2 className="spin" /> <span>Fetching insights...</span></div>
+      ) : (
+        <>
+          <div className="stats-grid">
+            <div className="stat-card">
+              <div className="stat-icon blue"><MessageSquare size={24} /></div>
+              <div className="stat-info"><h3>{stats?.message_volume_7d || 0}</h3><span>Messages</span></div>
+            </div>
+            <div className="stat-card">
+              <div className="stat-icon green"><FileText size={24} /></div>
+              <div className="stat-info"><h3>{stats?.document_count || 0}</h3><span>Docs</span></div>
+            </div>
+            <div className="stat-card">
+              <div className="stat-icon orange"><Activity size={24} /></div>
+              <div className="stat-info"><h3>99%</h3><span>AI Health</span></div>
+            </div>
+            <div className="stat-card">
+              <div className="stat-icon purple"><Zap size={24} /></div>
+              <div className="stat-info"><h3>{Object.keys(stats?.tool_usage || {}).length}</h3><span>Tools</span></div>
+            </div>
           </div>
-        </div>
-        <div className="stat-card">
-          <div className="stat-icon green"><FileText size={24} /></div>
-          <div className="stat-info">
-            <h3>{stats?.document_count || 0}</h3>
-            <span>Knowledge Files</span>
-          </div>
-        </div>
-        <div className="stat-card">
-          <div className="stat-icon purple"><Zap size={24} /></div>
-          <div className="stat-info">
-            <h3>{Object.values(stats?.tool_usage || {}).reduce((a, b) => a + b, 0)}</h3>
-            <span>Tool Executions</span>
-          </div>
-        </div>
-      </div>
 
-      <div className="dashboard-grid">
-        <section className="dashboard-section">
-          <h2>Tool Usage</h2>
-          <div className="tool-stats">
-            {stats && Object.keys(stats.tool_usage).length > 0 ? (
-              Object.entries(stats.tool_usage).map(([name, count]) => (
-                <div key={name} className="tool-row">
-                  <span>{name}</span>
-                  <div className="progress-bar">
-                    <div className="progress-fill" style={{ width: `${Math.min(100, count * 10)}%` }}></div>
-                  </div>
-                  <span className="count">{count}</span>
-                </div>
-              ))
-            ) : (
-              <p className="empty-msg">No tools used yet.</p>
-            )}
-          </div>
-        </section>
-
-        <section className="dashboard-section">
-          <h2>Recent Activity</h2>
-          <div className="activity-feed">
-            {stats?.recent_activity.map((event, idx) => (
-              <div key={idx} className="activity-item">
-                <div className="activity-icon">
-                  <Activity size={16} />
-                </div>
-                <div className="activity-text">
-                  <p><strong>{event.type}</strong>: {event.type === 'tool_call' ? `Executed ${event.data.tool}` : 'New RAG query received'}</p>
-                  <span>{new Date(event.timestamp).toLocaleString()}</span>
-                </div>
+          <div className="dashboard-grid">
+            <section className="dashboard-section chart-box" style={{ gridColumn: 'span 2' }}>
+              <div className="section-header">
+                <BarChart3 size={18} />
+                <h3>Volume Trend</h3>
               </div>
-            ))}
-            {(!stats?.recent_activity || stats.recent_activity.length === 0) && (
-              <p className="empty-msg">No recent activity.</p>
-            )}
+              <div style={{ width: '100%', height: 250, marginTop: '1rem' }}>
+                <ResponsiveContainer>
+                  <BarChart data={stats?.chart_data}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                    <XAxis dataKey="name" tick={{fontSize: 12}} axisLine={false} />
+                    <YAxis tick={{fontSize: 12}} axisLine={false} />
+                    <Tooltip cursor={{fill: '#f8fafc'}} />
+                    <Bar dataKey="messages" fill="var(--primary)" radius={[4, 4, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </section>
+
+            <section className="dashboard-section recent-activity" style={{ gridColumn: 'span 2' }}>
+              <div className="section-header">
+                <Clock size={18} />
+                <h3>Activity Log</h3>
+              </div>
+              <div className="activity-list">
+                {stats?.recent_activity.map((activity, idx) => (
+                  <div key={idx} className="activity-item">
+                    <div className={`activity-dot ${activity.type}`}></div>
+                    <div className="activity-details">
+                      <p>{activity.type === 'query' ? `User: "${activity.data.query}"` : `Tool: ${activity.data.tool}`}</p>
+                      <span>{new Date(activity.timestamp).toLocaleString()}</span>
+                    </div>
+                  </div>
+                ))}
+                {(!stats?.recent_activity || stats.recent_activity.length === 0) && (
+                  <p className="empty-msg">No activity recorded yet.</p>
+                )}
+              </div>
+            </section>
           </div>
-        </section>
-      </div>
+        </>
+      )}
     </div>
   );
 };

@@ -9,7 +9,6 @@ router = APIRouter()
 
 @router.get("/stats/{business_id}")
 def get_stats(business_id: int, db: Session = Depends(session.get_db)):
-    # Verify business exists
     business = db.query(models.Business).filter(models.Business.id == business_id).first()
     if not business:
         raise HTTPException(status_code=404, detail="Business not found")
@@ -21,16 +20,26 @@ def get_stats(business_id: int, db: Session = Depends(session.get_db)):
         models.Message.timestamp >= seven_days_ago
     ).count()
 
-    # 2. Tool usage breakdown
-    tool_usage = db.query(
-        models.AnalyticsEvent.event_data['tool'].astext.label('tool_name'),
-        func.count(models.AnalyticsEvent.id)
-    ).filter(
+    # 2. Daily Volume for Chart
+    chart_data = []
+    for i in range(6, -1, -1):
+        day = (datetime.utcnow() - timedelta(days=i)).date()
+        count = db.query(models.Message).filter(
+            models.Message.business_id == business_id,
+            func.date(models.Message.timestamp) == day
+        ).count()
+        chart_data.append({"name": day.strftime("%a"), "messages": count})
+
+    # 3. Tool usage
+    tool_events = db.query(models.AnalyticsEvent).filter(
         models.AnalyticsEvent.business_id == business_id,
         models.AnalyticsEvent.event_type == 'tool_call'
-    ).group_by('tool_name').all()
+    ).all()
+    tool_usage = {}
+    for event in tool_events:
+        tool_name = event.event_data.get('tool', 'unknown')
+        tool_usage[tool_name] = tool_usage.get(tool_name, 0) + 1
 
-    # 3. Document count
     doc_count = db.query(models.Document).filter(models.Document.business_id == business_id).count()
 
     # 4. Recent activity
@@ -41,12 +50,50 @@ def get_stats(business_id: int, db: Session = Depends(session.get_db)):
     return {
         "message_volume_7d": message_count,
         "document_count": doc_count,
-        "tool_usage": {name: count for name, count in tool_usage},
+        "tool_usage": tool_usage,
+        "chart_data": chart_data,
         "recent_activity": [
             {
                 "type": e.event_type,
                 "data": e.event_data,
                 "timestamp": e.timestamp
             } for e in recent_events
+        ]
+    }
+
+@router.get("/system-wide")
+def get_system_stats(db: Session = Depends(session.get_db)):
+    biz_count = db.query(models.Business).count()
+    user_count = db.query(models.User).count()
+    msg_count = db.query(models.Message).count()
+    doc_count = db.query(models.Document).count()
+    
+    last_24h = datetime.utcnow() - timedelta(hours=24)
+    active_bots = db.query(models.Message.business_id).filter(
+        models.Message.timestamp >= last_24h
+    ).distinct().count()
+
+    # System-wide chart data (Total messages per day)
+    system_chart = []
+    for i in range(6, -1, -1):
+        day = (datetime.utcnow() - timedelta(days=i)).date()
+        count = db.query(models.Message).filter(func.date(models.Message.timestamp) == day).count()
+        system_chart.append({"name": day.strftime("%a"), "total": count})
+
+    recent_biz = db.query(models.Business).order_by(models.Business.created_at.desc()).limit(5).all()
+
+    return {
+        "total_businesses": biz_count,
+        "total_users": user_count,
+        "total_messages": msg_count,
+        "total_documents": doc_count,
+        "active_last_24h": active_bots,
+        "system_chart": system_chart,
+        "recent_businesses": [
+            {
+                "id": b.id,
+                "name": b.name,
+                "created_at": b.created_at
+            } for b in recent_biz
         ]
     }

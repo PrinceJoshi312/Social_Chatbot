@@ -1,8 +1,9 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 
 interface Business {
   id: number;
   name: string;
+  owner_email: string;
   config: any;
 }
 
@@ -11,6 +12,7 @@ interface BusinessContextType {
   setActiveBusiness: (business: Business) => void;
   businesses: Business[];
   loading: boolean;
+  refreshBusinesses: () => Promise<void>;
 }
 
 const BusinessContext = createContext<BusinessContextType | undefined>(undefined);
@@ -20,23 +22,46 @@ export const BusinessProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const [businesses, setBusinesses] = useState<Business[]>([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    // Fetch businesses on load
-    fetch('/api/businesses/')
-      .then(res => res.json())
-      .then(data => {
-        setBusinesses(data);
-        if (data.length > 0) setActiveBusiness(data[0]);
-        setLoading(false);
-      })
-      .catch(err => {
-        console.error("Failed to fetch businesses", err);
-        setLoading(false);
+  const refreshBusinesses = useCallback(async () => {
+    const token = localStorage.getItem('token');
+    if (!token) {
+      setLoading(false);
+      return;
+    }
+
+    try {
+      const res = await fetch('/api/businesses/', {
+        headers: { 'Authorization': `Bearer ${token}` }
       });
-  }, []);
+      if (res.status === 401) {
+        localStorage.removeItem('token');
+        window.location.href = '/login';
+        return;
+      }
+      const data = await res.json();
+      setBusinesses(data);
+      if (data.length > 0 && !activeBusiness) {
+        setActiveBusiness(data[0]);
+      }
+    } catch (err) {
+      console.error("Failed to fetch businesses", err);
+    } finally {
+      setLoading(false);
+    }
+  }, [activeBusiness]);
+
+  useEffect(() => {
+    refreshBusinesses();
+  }, [refreshBusinesses]);
 
   return (
-    <BusinessContext.Provider value={{ activeBusiness, setActiveBusiness, businesses, loading }}>
+    <BusinessContext.Provider value={{ 
+      activeBusiness, 
+      setActiveBusiness, 
+      businesses, 
+      loading, 
+      refreshBusinesses 
+    }}>
       {children}
     </BusinessContext.Provider>
   );

@@ -1,10 +1,24 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, EmailStr
 from datetime import datetime
-from typing import Optional, List, Dict
+from typing import Optional, Dict, Any, List
+
+class UserBase(BaseModel):
+    email: EmailStr
+
+class UserCreate(UserBase):
+    password: str
+
+class User(UserBase):
+    id: int
+    role: str
+    is_active: bool
+    created_at: datetime
+    class Config:
+        from_attributes = True
 
 class BusinessBase(BaseModel):
     name: str
-    config: Optional[Dict] = {}
+    config: Dict[str, Any]
 
 class BusinessCreate(BusinessBase):
     pass
@@ -12,18 +26,13 @@ class BusinessCreate(BusinessBase):
 class Business(BusinessBase):
     id: int
     created_at: datetime
-
     class Config:
         from_attributes = True
 
-class DocumentBase(BaseModel):
-    filename: str
-    business_id: int
-
-class Document(DocumentBase):
+class Document(BaseModel):
     id: int
+    filename: str
     created_at: datetime
-
     class Config:
         from_attributes = True
 
@@ -34,4 +43,4 @@ class QueryRequest(BaseModel):
 class QueryResponse(BaseModel):
     query: str
     context: List[str]
-    answer: str # Placeholder for now
+    answer: str
