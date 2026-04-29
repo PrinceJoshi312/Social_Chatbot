@@ -61,6 +61,70 @@ export const LandingPage: React.FC = () => {
     }
   ];
 
+  const PricingSection = () => (
+    <section id="pricing" className="features-section" style={{ background: '#f8fafc' }}>
+      <div className="section-title">
+        <h2>Simple, Transparent Pricing</h2>
+        <p>Everything you need to scale your business automation.</p>
+      </div>
+      <div className="features-grid" style={{ gridTemplateColumns: 'repeat(3, 1fr)', marginTop: '3rem' }}>
+        <div className="feature-card" style={{ border: '1px solid #e2e8f0', background: 'white' }}>
+          <div style={{ marginBottom: '1.5rem' }}>
+            <h3 style={{ fontSize: '1.25rem' }}>Starter</h3>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: '4px', marginTop: '0.5rem' }}>
+              <span style={{ fontSize: '2rem', fontWeight: 'bold' }}>$29</span>
+              <span style={{ color: '#64748b' }}>/mo</span>
+            </div>
+          </div>
+          <ul style={{ listStyle: 'none', textAlign: 'left', display: 'flex', flexDirection: 'column', gap: '0.75rem', marginBottom: '2rem' }}>
+            <li style={{ display: 'flex', gap: '8px', fontSize: '0.9rem' }}><Check size={16} color="#25d366" /> 1 WhatsApp Bot</li>
+            <li style={{ display: 'flex', gap: '8px', fontSize: '0.9rem' }}><Check size={16} color="#25d366" /> 50 Documents</li>
+            <li style={{ display: 'flex', gap: '8px', fontSize: '0.9rem' }}><Check size={16} color="#25d366" /> 1,000 Messages/mo</li>
+            <li style={{ display: 'flex', gap: '8px', fontSize: '0.9rem' }}><Check size={16} color="#25d366" /> Standard RAG</li>
+          </ul>
+          <button className="primary-btn" style={{ width: '100%' }} onClick={() => navigate('/signup')}>Choose Starter</button>
+        </div>
+
+        <div className="feature-card" style={{ border: '2px solid var(--primary)', background: 'white', position: 'relative', transform: 'scale(1.05)' }}>
+          <div style={{ position: 'absolute', top: '-12px', left: '50%', transform: 'translateX(-50%)', background: 'var(--primary)', color: 'white', padding: '2px 12px', borderRadius: '12px', fontSize: '0.75rem', fontWeight: 'bold' }}>
+            MOST POPULAR
+          </div>
+          <div style={{ marginBottom: '1.5rem' }}>
+            <h3 style={{ fontSize: '1.25rem' }}>Pro</h3>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: '4px', marginTop: '0.5rem' }}>
+              <span style={{ fontSize: '2rem', fontWeight: 'bold' }}>$79</span>
+              <span style={{ color: '#64748b' }}>/mo</span>
+            </div>
+          </div>
+          <ul style={{ listStyle: 'none', textAlign: 'left', display: 'flex', flexDirection: 'column', gap: '0.75rem', marginBottom: '2rem' }}>
+            <li style={{ display: 'flex', gap: '8px', fontSize: '0.9rem' }}><Check size={16} color="#25d366" /> 3 WhatsApp Bots</li>
+            <li style={{ display: 'flex', gap: '8px', fontSize: '0.9rem' }}><Check size={16} color="#25d366" /> 500 Documents</li>
+            <li style={{ display: 'flex', gap: '8px', fontSize: '0.9rem' }}><Check size={16} color="#25d366" /> 10,000 Messages/mo</li>
+            <li style={{ display: 'flex', gap: '8px', fontSize: '0.9rem' }}><Check size={16} color="#25d366" /> Advanced Tools (Orders)</li>
+          </ul>
+          <button className="primary-btn" style={{ width: '100%' }} onClick={() => navigate('/signup')}>Choose Pro</button>
+        </div>
+
+        <div className="feature-card" style={{ border: '1px solid #e2e8f0', background: 'white' }}>
+          <div style={{ marginBottom: '1.5rem' }}>
+            <h3 style={{ fontSize: '1.25rem' }}>Enterprise</h3>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: '4px', marginTop: '0.5rem' }}>
+              <span style={{ fontSize: '2rem', fontWeight: 'bold' }}>$249</span>
+              <span style={{ color: '#64748b' }}>/mo</span>
+            </div>
+          </div>
+          <ul style={{ listStyle: 'none', textAlign: 'left', display: 'flex', flexDirection: 'column', gap: '0.75rem', marginBottom: '2rem' }}>
+            <li style={{ display: 'flex', gap: '8px', fontSize: '0.9rem' }}><Check size={16} color="#25d366" /> Unlimited Bots</li>
+            <li style={{ display: 'flex', gap: '8px', fontSize: '0.9rem' }}><Check size={16} color="#25d366" /> Unlimited Docs</li>
+            <li style={{ display: 'flex', gap: '8px', fontSize: '0.9rem' }}><Check size={16} color="#25d366" /> White-label support</li>
+            <li style={{ display: 'flex', gap: '8px', fontSize: '0.9rem' }}><Check size={16} color="#25d366" /> Custom Tool Dev</li>
+          </ul>
+          <button className="primary-btn" style={{ width: '100%' }} onClick={() => navigate('/signup')}>Contact Sales</button>
+        </div>
+      </div>
+    </section>
+  );
+
   return (
     <div className="landing-page">
       <Toaster position="bottom-center" />
@@ -121,6 +185,8 @@ export const LandingPage: React.FC = () => {
           </div>
         </div>
       </section>
+
+      <PricingSection />
 
       <section id="reviews" className="features-section" style={{ background: 'white' }}>
         <div className="section-title"><h2>Trusted by Business Owners</h2></div>

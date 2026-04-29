@@ -35,20 +35,25 @@ export const BusinessProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       });
       if (res.status === 401) {
         localStorage.removeItem('token');
-        window.location.href = '/login';
+        // Avoid hard redirect in provider to prevent infinite loop on login page
         return;
       }
       const data = await res.json();
       setBusinesses(data);
-      if (data.length > 0 && !activeBusiness) {
-        setActiveBusiness(data[0]);
-      }
+      
+      // Use functional state update to avoid dependency on activeBusiness
+      setActiveBusiness(prev => {
+        if (data.length > 0 && !prev) {
+          return data[0];
+        }
+        return prev;
+      });
     } catch (err) {
       console.error("Failed to fetch businesses", err);
     } finally {
       setLoading(false);
     }
-  }, [activeBusiness]);
+  }, []); // Remove activeBusiness dependency
 
   useEffect(() => {
     refreshBusinesses();
