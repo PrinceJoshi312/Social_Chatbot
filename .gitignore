@@ -7,21 +7,25 @@ venv/
 *.db
 *.sqlite3
 
+
 # Node
 node_modules/
 dist/
 dist-ssr/
 *.local
 
+
 # RAG Storage
 storage/
 backend/storage/
+
 
 # IDEs
 .vscode/
 .idea/
 *.swp
 *.swo
+
 
 # OS
 .DS_Store
