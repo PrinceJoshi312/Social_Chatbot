@@ -17,4 +17,7 @@ httpx==0.27.0
 email-validator>=2.0.0
 python-jose[cryptography]
 passlib[bcrypt]
-stripe
+razorpay
+fpdf2
+google-generativeai
+cryptography

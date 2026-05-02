@@ -10,9 +10,7 @@ import {
   Cpu,
   Star,
   Globe,
-  Mail,
-  MessageCircle,
-  X
+  Mail
 } from 'lucide-react';
 import { Toaster, toast } from 'react-hot-toast';
 import { FAQ } from '../components/FAQ';
@@ -133,7 +131,7 @@ export const LandingPage: React.FC = () => {
         <div className="nav-container">
           <div className="nav-logo" onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })} style={{ cursor: 'pointer' }}>
             <MessageSquare color="var(--primary)" fill="var(--primary)" size={28} />
-            <span>RAG-Bot SaaS</span>
+            <span>SocialLink</span>
           </div>
           <div className="nav-links">
             <button onClick={() => scrollToSection('features')} className="nav-link-btn">Features</button>
@@ -148,7 +146,7 @@ export const LandingPage: React.FC = () => {
       <header className="hero-section">
         <div className="hero-content fade-in">
           <div className="badge-new">NEW: Llama 3.2 Support 🚀</div>
-          <h1>Deploy AI-Powered <span>WhatsApp Bots</span> that know your business.</h1>
+          <h1>Deploy AI-Powered <span>SocialLink Bots</span> that know your business.</h1>
           <p>Multi-tenant platform to create accurate, context-aware RAG assistants in seconds.</p>
           <div className="hero-btns">
             <button className="primary-hero-btn" onClick={() => navigate('/signup')}>
@@ -213,9 +211,9 @@ export const LandingPage: React.FC = () => {
            <div className="footer-brand">
               <div className="nav-logo" style={{ color: 'white', marginBottom: '1.5rem' }}>
                 <MessageSquare color="#25d366" fill="#25d366" size={28} />
-                <span>RAG-Bot SaaS</span>
+                <span>SocialLink</span>
               </div>
-              <p style={{ color: '#94a3b8', fontSize: '0.9rem' }}>Future of business communication.</p>
+              <p style={{ color: '#94a3b8', fontSize: '0.9rem' }}>SocialLink v1.0.2 - Future of business communication.</p>
               <div style={{ display: 'flex', gap: '1rem', marginTop: '2rem' }}>
                  <Globe size={20} style={{ cursor: 'pointer' }} />
                  <Mail size={20} style={{ cursor: 'pointer' }} />

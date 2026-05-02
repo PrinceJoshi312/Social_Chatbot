@@ -32,18 +32,17 @@ def seed():
         print("Seeded subscription plans.")
 
         # 2. Create a Super Admin User
-        admin = db.query(User).filter(User.email == "admin@platform.com").first()
+        admin = db.query(User).filter(User.email == "princejoshij736@gmail.com").first()
         if not admin:
-            from app.core.security import get_password_hash
             admin = User(
-                email="admin@platform.com",
-                hashed_password=get_password_hash("admin123"),
+                email="princejoshij736@gmail.com",
+                hashed_password="hashed_048Nc3", # Placeholder for local DB
                 role="super_admin"
             )
             db.add(admin)
             db.commit()
             db.refresh(admin)
-            print("Created Super Admin user (admin@platform.com / admin123).")
+            print("Created Super Admin user (princejoshij736@gmail.com).")
 
         # 3. Create Acme Corp Business
         acme = db.query(Business).filter(Business.name == "Acme Corp").first()

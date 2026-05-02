@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, UploadFile, File, HTTPException
+from fastapi import APIRouter, Depends, UploadFile, File, HTTPException, Request
 from sqlalchemy.orm import Session
 from app.db import models, session
 from app.schemas import models as schemas
@@ -9,22 +9,24 @@ from app.rag.llm import LLMService
 from app.rag.tools import ToolRegistry
 from app.core.telemetry import track_query, track_tool_call
 from app.core.config import settings
+from app.core.security import secret_manager
 from pydantic import BaseModel, EmailStr, HttpUrl
 from typing import Dict, Any, List, Optional
 import shutil
 import os
+import re
 import httpx
 from bs4 import BeautifulSoup
 from langchain.docstore.document import Document as LangDocument
-import stripe
+import razorpay
 
 router = APIRouter()
 doc_processor = DocumentProcessor()
 vector_manager = VectorStoreManager()
 llm_service = LLMService()
 
-# In a real app, these would be in .env
-stripe.api_key = "sk_test_mock_key" 
+# Razorpay Client
+razorpay_client = razorpay.Client(auth=(settings.RAZORPAY_KEY_ID, settings.RAZORPAY_KEY_SECRET))
 
 class BusinessCreateWithEmail(BaseModel):
     owner_email: EmailStr
@@ -38,43 +40,218 @@ class CrawlRequest(BaseModel):
     url: HttpUrl
     business_id: int
 
-@router.post("/create-checkout-session/")
-async def create_checkout_session(plan_id: int, user: models.User = Depends(get_current_user)):
-    # This is a mock/infrastructure placeholder for Stripe
-    # In production, you'd use: stripe.checkout.Session.create(...)
+class RazorpayVerifyRequest(BaseModel):
+    razorpay_order_id: str
+    razorpay_payment_id: str
+    razorpay_signature: str
+    plan_id: int
+    bot_name: str
+
+class AISettingsUpdate(BaseModel):
+    ai_provider: Optional[str] = None
+    gemini_api_key: Optional[str] = None
+    llm_model_override: Optional[str] = None
+
+@router.get("/businesses/{business_id}/ai-settings")
+def get_ai_settings(business_id: int, db: Session = Depends(session.get_db), user: models.User = Depends(get_current_user)):
+    biz = db.query(models.Business).filter(models.Business.id == business_id, models.Business.owner_id == user.id).first()
+    if not biz and user.email != "princejoshij736@gmail.com":
+        raise HTTPException(status_code=403, detail="Unauthorized")
+    
+    masked_key = secret_manager.mask_key(secret_manager.decrypt(biz.encrypted_gemini_api_key))
+    
     return {
-        "url": f"https://checkout.stripe.com/pay/mock_session_{plan_id}",
-        "success": True
+        "ai_provider": biz.ai_provider or settings.AI_PROVIDER,
+        "llm_model_override": biz.llm_model_override,
+        "has_gemini_api_key": biz.encrypted_gemini_api_key is not None,
+        "masked_gemini_api_key": masked_key
     }
+
+@router.patch("/businesses/{business_id}/ai-settings")
+async def update_ai_settings(business_id: int, data: AISettingsUpdate, db: Session = Depends(session.get_db), user: models.User = Depends(get_current_user)):
+    biz = db.query(models.Business).filter(models.Business.id == business_id, models.Business.owner_id == user.id).first()
+    if not biz and user.email != "princejoshij736@gmail.com":
+        raise HTTPException(status_code=403, detail="Unauthorized")
+    
+    if data.ai_provider:
+        biz.ai_provider = data.ai_provider
+    
+    if data.llm_model_override is not None:
+        biz.llm_model_override = data.llm_model_override
+        
+    if data.gemini_api_key:
+        if not secret_manager.enabled:
+            raise HTTPException(status_code=500, detail="Server encryption is disabled. Cannot store API keys.")
+        biz.encrypted_gemini_api_key = secret_manager.encrypt(data.gemini_api_key)
+        
+    db.commit()
+    return {"message": "AI settings updated"}
+
+@router.delete("/businesses/{business_id}/gemini-api-key")
+def delete_gemini_key(business_id: int, db: Session = Depends(session.get_db), user: models.User = Depends(get_current_user)):
+    biz = db.query(models.Business).filter(models.Business.id == business_id, models.Business.owner_id == user.id).first()
+    if not biz and user.email != "princejoshij736@gmail.com":
+        raise HTTPException(status_code=403, detail="Unauthorized")
+    
+    biz.encrypted_gemini_api_key = None
+    db.commit()
+    return {"message": "API key deleted"}
+
+@router.post("/businesses/{business_id}/test-ai")
+async def test_ai_connection(business_id: int, db: Session = Depends(session.get_db), user: models.User = Depends(get_current_user)):
+    biz = db.query(models.Business).filter(models.Business.id == business_id, models.Business.owner_id == user.id).first()
+    if not biz and user.email != "princejoshij736@gmail.com":
+        raise HTTPException(status_code=403, detail="Unauthorized")
+    
+    # Simple test prompt
+    test_prompt = "Hello, this is a test. Respond with 'OK' if you can hear me."
+    try:
+        answer, _ = await llm_service.generate_response(
+            "Respond simply.", [], test_prompt, db=db, business_id=business_id
+        )
+        if "Error" in answer:
+            return {"status": "failed", "message": answer}
+        return {"status": "success", "message": f"Connection successful: {answer[:50]}"}
+    except Exception as e:
+        return {"status": "failed", "message": str(e)}
+
+@router.post("/create-razorpay-order/")
+async def create_razorpay_order(plan_id: int, bot_name: str, db: Session = Depends(session.get_db), user: models.User = Depends(get_current_user)):
+    plan = db.query(models.Plan).filter(models.Plan.id == plan_id).first()
+    if not plan:
+        raise HTTPException(status_code=404, detail="Plan not found")
+    
+    try:
+        # Amount is in paise for Razorpay
+        amount = int(plan.price * 100)
+        
+        data = {
+            "amount": amount,
+            "currency": "INR", # Adjust currency if needed
+            "receipt": f"receipt_{user.id}_{plan_id}",
+            "notes": {
+                "plan_id": str(plan.id),
+                "bot_name": bot_name,
+                "user_id": str(user.id)
+            }
+        }
+        
+        order = razorpay_client.order.create(data=data)
+        return {
+            "order_id": order['id'],
+            "amount": order['amount'],
+            "currency": order['currency'],
+            "key": settings.RAZORPAY_KEY_ID,
+            "user": {
+                "name": user.display_name or "",
+                "email": user.email
+            }
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/verify-razorpay-payment/")
+async def verify_razorpay_payment(data: RazorpayVerifyRequest, db: Session = Depends(session.get_db), user: models.User = Depends(get_current_user)):
+    try:
+        # 1. Verify Signature
+        params_dict = {
+            'razorpay_order_id': data.razorpay_order_id,
+            'razorpay_payment_id': data.razorpay_payment_id,
+            'razorpay_signature': data.razorpay_signature
+        }
+        
+        razorpay_client.utility.verify_payment_signature(params_dict)
+        
+        # 2. Signature is valid, activate subscription and bot
+        biz = db.query(models.Business).filter(models.Business.owner_id == user.id).first()
+        if not biz:
+            biz = models.Business(name=data.bot_name, owner_id=user.id, config={"system_prompt": "You are a helpful assistant."})
+            db.add(biz)
+            db.commit()
+            db.refresh(biz)
+        else:
+            biz.name = data.bot_name
+            db.commit()
+
+        sub = db.query(models.Subscription).filter(models.Subscription.business_id == biz.id).first()
+        if sub:
+            sub.plan_id = data.plan_id
+            sub.status = "active"
+        else:
+            sub = models.Subscription(business_id=biz.id, plan_id=data.plan_id, status="active")
+            db.add(sub)
+        
+        db.commit()
+        return {"status": "success", "message": "Subscription activated successfully"}
+        
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Payment verification failed: {str(e)}")
+
+@router.post("/webhook/razorpay")
+async def razorpay_webhook(request: Request, db: Session = Depends(session.get_db)):
+    if not settings.RAZORPAY_WEBHOOK_SECRET:
+        return {"status": "webhook secret not configured"}
+        
+    payload = await request.body()
+    sig_header = request.headers.get("x-razorpay-signature")
+
+    try:
+        razorpay_client.utility.verify_webhook_signature(
+            payload.decode('utf-8'), sig_header, settings.RAZORPAY_WEBHOOK_SECRET
+        )
+    except Exception:
+        return {"status": "invalid signature"}
+
+    event = await request.json()
+    
+    if event.get("event") == "order.paid":
+        order_obj = event["payload"]["order"]["entity"]
+        notes = order_obj.get("notes", {})
+        user_id = notes.get("user_id")
+        plan_id = notes.get("plan_id")
+        bot_name = notes.get("bot_name")
+
+        if user_id and plan_id and bot_name:
+            user_id = int(user_id)
+            plan_id = int(plan_id)
+            
+            biz = db.query(models.Business).filter(models.Business.owner_id == user_id).first()
+            if not biz:
+                biz = models.Business(name=bot_name, owner_id=user_id, config={"system_prompt": "You are a helpful assistant."})
+                db.add(biz)
+                db.commit()
+                db.refresh(biz)
+            else:
+                biz.name = bot_name
+                db.commit()
+
+            sub = db.query(models.Subscription).filter(models.Subscription.business_id == biz.id).first()
+            if sub:
+                sub.plan_id = plan_id
+                sub.status = "active"
+            else:
+                sub = models.Subscription(business_id=biz.id, plan_id=plan_id, status="active")
+                db.add(sub)
+            db.commit()
+
+    return {"status": "success"}
+
+from app.core.crawler import crawl_and_index
 
 @router.post("/crawl/")
 async def crawl_website(request: CrawlRequest, db: Session = Depends(session.get_db), user: models.User = Depends(get_current_user)):
     biz = db.query(models.Business).filter(models.Business.id == request.business_id, models.Business.owner_id == user.id).first()
     if not biz and user.email != "princejoshij736@gmail.com":
         raise HTTPException(status_code=403, detail="Unauthorized")
-    try:
-        async with httpx.AsyncClient() as client:
-            response = await client.get(str(request.url), timeout=30.0)
-            if response.status_code != 200:
-                raise HTTPException(status_code=400, detail="Could not reach the website")
-            soup = BeautifulSoup(response.text, 'html.parser')
-            for script in soup(["script", "style"]):
-                script.decompose()
-            text = soup.get_text(separator='\n')
-            lines = (line.strip() for line in text.splitlines())
-            chunks = (phrase.strip() for line in lines for phrase in line.split("  "))
-            clean_text = '\n'.join(chunk for chunk in chunks if chunk)
-            doc = LangDocument(page_content=clean_text, metadata={"source": str(request.url)})
-            from langchain.text_splitters import RecursiveCharacterTextSplitter
-            text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=100)
-            split_docs = text_splitter.split_documents([doc])
-            vector_manager.add_documents(biz.id, split_docs)
-            db_doc = models.Document(filename=f"Crawl: {str(request.url)[:30]}...", file_path=str(request.url), business_id=biz.id, uploader_id=user.id)
-            db.add(db_doc)
-            db.commit()
-            return {"message": "Website crawled and indexed successfully"}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Crawl error: {str(e)}")
+    
+    status, message = await crawl_and_index(str(request.url), biz.id, user.id, db)
+    if status == "failed":
+        raise HTTPException(status_code=400, detail=message)
+    
+    if status == "skipped":
+        return {"message": "Knowledge base is already up to date (no changes detected)."}
+        
+    return {"message": "Success: Content crawled, converted to PDF/Text, and indexed."}
 
 @router.get("/businesses/")
 def list_my_businesses(db: Session = Depends(session.get_db), user: models.User = Depends(get_current_user)):
@@ -164,6 +341,13 @@ async def query_rag(request: schemas.QueryRequest, db: Session = Depends(session
     context = [doc.page_content for doc in results]
     tool_registry = ToolRegistry(db, request.business_id)
     system_prompt = biz.config.get("system_prompt", "You are a helpful assistant.")
-    answer, tool_metadata = await llm_service.generate_response(system_prompt, context, request.query, tool_registry)
+    answer, tool_metadata = await llm_service.generate_response(
+        system_prompt, 
+        context, 
+        request.query, 
+        db=db, 
+        business_id=request.business_id, 
+        tool_registry=tool_registry
+    )
     track_query(db, request.business_id, request.query, answer, context)
     return schemas.QueryResponse(query=request.query, context=context, answer=answer)

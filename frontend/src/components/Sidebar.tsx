@@ -7,9 +7,7 @@ import {
   Settings, 
   Building2, 
   ShieldCheck, 
-  Plus,
   BarChart3,
-  ShieldAlert,
   LogOut,
   CreditCard,
   HelpCircle
@@ -37,9 +35,8 @@ const Sidebar: React.FC = () => {
   return (
     <aside className="sidebar">
       <div className="user-profile-mini">
-        <div className="profile-avatar">{user?.email[0].toUpperCase()}</div>
         <div className="profile-info">
-          <span className="profile-email">{user?.email}</span>
+          <span className="profile-email">{user?.displayName || user?.email}</span>
           <span className={`role-tag ${isAdmin ? 'admin' : 'user'}`}>
             {isAdmin ? 'Super Admin' : 'Business Owner'}
           </span>
@@ -52,7 +49,7 @@ const Sidebar: React.FC = () => {
             <MessageSquare color="white" size={24} fill="white" />
           </div>
           <div className="logo-text">
-            <h2>RAG SaaS</h2>
+            <h2>SocialLink</h2>
             <span>Enterprise</span>
           </div>
         </div>
@@ -70,10 +67,11 @@ const Sidebar: React.FC = () => {
               <Building2 size={18} />
               <span>Manage Clients</span>
             </NavLink>
-            <NavLink to="/settings" className={({ isActive }) => isActive ? 'nav-item active' : 'nav-item'}>
+            <NavLink to="/admin/security" className={({ isActive }) => isActive ? 'nav-item active' : 'nav-item'}>
               <ShieldCheck size={18} />
               <span>Platform Security</span>
             </NavLink>
+
           </>
         ) : (
           <>

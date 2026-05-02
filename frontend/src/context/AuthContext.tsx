@@ -1,74 +1,112 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import { 
+  onAuthStateChanged, 
+  type User as FirebaseUser,
+  signOut,
+  getIdToken
+} from 'firebase/auth';
+import { auth } from '../firebase';
 
-interface User {
-  email: string;
+export interface User {
+  uid: string;
+  email: string | null;
+  displayName: string | null;
+  photoURL: string | null;
   role: string;
+  provider: string;
+  createdAt: string;
+  lastLogin: string;
 }
 
 interface AuthContextType {
   user: User | null;
-  token: string | null;
-  login: (token: string, user: User) => void;
+  loading: boolean;
   logout: () => void;
   isAuthenticated: boolean;
   isAdmin: boolean;
+  getAccessToken: () => Promise<string | null>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+const SUPER_ADMIN_EMAIL = 'princejoshij736@gmail.com';
+
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
-  const [token, setToken] = useState<string | null>(localStorage.getItem('token'));
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const savedUser = localStorage.getItem('user');
-    if (savedUser && token) {
-      const parsedUser = JSON.parse(savedUser);
-      // HARD ENFORCEMENT: Only this specific email is an Admin
-      if (parsedUser.email === 'princejoshij736@gmail.com') {
-        parsedUser.role = 'super_admin';
-      } else {
-        parsedUser.role = 'business_owner';
+    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser: FirebaseUser | null) => {
+      try {
+        if (firebaseUser) {
+          // Map Firebase user to our User interface
+          const mappedUser: User = {
+            uid: firebaseUser.uid,
+            email: firebaseUser.email,
+            displayName: firebaseUser.displayName,
+            photoURL: firebaseUser.photoURL,
+            role: firebaseUser.email === SUPER_ADMIN_EMAIL ? 'super_admin' : 'business_owner',
+            provider: firebaseUser.providerData[0]?.providerId || 'password',
+            createdAt: firebaseUser.metadata.creationTime || new Date().toISOString(),
+            lastLogin: firebaseUser.metadata.lastSignInTime || new Date().toISOString(),
+          };
+          setUser(mappedUser);
+          
+          // Store token for other components that might not use useAuth
+          const token = await firebaseUser.getIdToken();
+          localStorage.setItem('token', token);
+        } else {
+          setUser(null);
+          localStorage.removeItem('token');
+        }
+      } catch (error) {
+        console.error('Auth state change error:', error);
+      } finally {
+        setLoading(false);
       }
-      setUser(parsedUser);
-    }
-  }, [token]);
+    });
 
-  const login = (newToken: string, userData: User) => {
-    // ENFORCE AT LOGIN TIME
-    const finalUser = { ...userData };
-    if (finalUser.email === 'princejoshij736@gmail.com') {
-      finalUser.role = 'super_admin';
-    } else {
-      finalUser.role = 'business_owner';
+    return () => unsubscribe();
+  }, []);
+
+  const logout = async () => {
+    try {
+      await signOut(auth);
+      window.location.href = '/';
+    } catch (error) {
+      console.error('Logout error:', error);
     }
-    
-    localStorage.setItem('token', newToken);
-    localStorage.setItem('user', JSON.stringify(finalUser));
-    setToken(newToken);
-    setUser(finalUser);
   };
 
-  const logout = () => {
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
-    setToken(null);
-    setUser(null);
-    window.location.href = '/';
+  const getAccessToken = async () => {
+    console.log("[DEBUG] getAccessToken called. Current Firebase User:", auth.currentUser?.email);
+    if (auth.currentUser) {
+      try {
+        const token = await getIdToken(auth.currentUser);
+        console.log("[DEBUG] Token retrieved successfully.");
+        localStorage.setItem('token', token);
+        return token;
+      } catch (err) {
+        console.error("[DEBUG] Failed to get ID token:", err);
+        return null;
+      }
+    }
+    console.warn("[DEBUG] No current user in firebase auth.");
+    return null;
   };
 
-  const isAdmin = user?.role === 'super_admin' || user?.email === 'princejoshij736@gmail.com';
+  const isAdmin = user?.role === 'super_admin' || user?.email === SUPER_ADMIN_EMAIL;
 
   return (
     <AuthContext.Provider value={{ 
       user, 
-      token, 
-      login, 
+      loading,
       logout, 
-      isAuthenticated: !!token,
-      isAdmin
+      isAuthenticated: !!user,
+      isAdmin,
+      getAccessToken
     }}>
-      {children}
+      {!loading && children}
     </AuthContext.Provider>
   );
 };

@@ -3,12 +3,9 @@ import {
   ChevronDown, 
   ChevronUp, 
   Search, 
-  Book, 
-  Shield, 
   Smartphone, 
   CreditCard,
-  Zap,
-  HelpCircle
+  Zap
 } from 'lucide-react';
 
 const categories = [

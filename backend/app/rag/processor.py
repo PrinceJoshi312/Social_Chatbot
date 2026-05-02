@@ -6,7 +6,7 @@ from app.core.config import settings
 import os
 
 class DocumentProcessor:
-    def __init__(self, chunk_size=1000, chunk_overlap=200):
+    def __init__(self, chunk_size=2000, chunk_overlap=300):
         self.strategy = settings.CHUNK_STRATEGY
         self.embeddings = HuggingFaceEmbeddings(model_name=settings.EMBEDDING_MODEL)
         

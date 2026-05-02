@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useBusiness } from '../context/BusinessContext';
+import { useAuth } from '../context/AuthContext';
 import { 
   Save, 
   Building, 
@@ -8,7 +9,6 @@ import {
   AlertCircle, 
   Phone, 
   Key, 
-  Globe,
   HelpCircle,
   ExternalLink,
   ShieldCheck
@@ -17,6 +17,7 @@ import './Settings.css';
 
 export const SettingsPage: React.FC = () => {
   const { activeBusiness, setActiveBusiness } = useBusiness();
+  const { getAccessToken } = useAuth();
   const [name, setName] = useState('');
   const [systemPrompt, setSystemPrompt] = useState('');
   
@@ -29,6 +30,17 @@ export const SettingsPage: React.FC = () => {
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // AI Settings
+  const [aiProvider, setAiProvider] = useState('gemini');
+  const [geminiApiKey, setGeminiApiKey] = useState('');
+  const [maskedGeminiKey, setMaskedGeminiKey] = useState('');
+  const [llmModelOverride, setLlmModelOverride] = useState('');
+  const [hasGeminiKey, setHasGeminiKey] = useState(false);
+  const [privacyConsent, setPrivacyConsent] = useState(false);
+  
+  const [isTestingAI, setIsTestingAI] = useState(false);
+  const [testResult, setTestResult] = useState<{status: string, message: string} | null>(null);
+
   useEffect(() => {
     if (activeBusiness) {
       setName(activeBusiness.name);
@@ -36,8 +48,100 @@ export const SettingsPage: React.FC = () => {
       setPhoneId(activeBusiness.config?.whatsapp_phone_id || '');
       setToken(activeBusiness.config?.whatsapp_token || '');
       setVerifyToken(activeBusiness.config?.whatsapp_verify_token || '');
+      
+      // Fetch AI Settings
+      fetchAiSettings();
     }
   }, [activeBusiness]);
+
+  const fetchAiSettings = async () => {
+    if (!activeBusiness) return;
+    try {
+      const accessToken = await getAccessToken();
+      const res = await fetch(`/api/businesses/${activeBusiness.id}/ai-settings`, {
+        headers: { 'Authorization': `Bearer ${accessToken}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setAiProvider(data.ai_provider);
+        setLlmModelOverride(data.llm_model_override || '');
+        setHasGeminiKey(data.has_gemini_api_key);
+        setMaskedGeminiKey(data.masked_gemini_api_key);
+      }
+    } catch (err) {
+      console.error("Failed to fetch AI settings", err);
+    }
+  };
+
+  const handleSaveAISettings = async () => {
+    if (!activeBusiness) return;
+    if (geminiApiKey && !privacyConsent) {
+      setError("Please confirm the privacy statement before saving your API key.");
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      const accessToken = await getAccessToken();
+      const res = await fetch(`/api/businesses/${activeBusiness.id}/ai-settings`, {
+        method: 'PATCH',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${accessToken}`
+        },
+        body: JSON.stringify({
+          ai_provider: aiProvider,
+          gemini_api_key: geminiApiKey || null,
+          llm_model_override: llmModelOverride || null
+        })
+      });
+      if (!res.ok) throw new Error("Failed to update AI settings");
+      setGeminiApiKey('');
+      await fetchAiSettings();
+      setSuccess(true);
+      setTimeout(() => setSuccess(false), 3000);
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleDeleteKey = async () => {
+    if (!activeBusiness || !window.confirm("Are you sure you want to remove your API key? The bot will fall back to server defaults.")) return;
+    try {
+      const accessToken = await getAccessToken();
+      const res = await fetch(`/api/businesses/${activeBusiness.id}/gemini-api-key`, { 
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${accessToken}` }
+      });
+      if (res.ok) {
+        await fetchAiSettings();
+        setSuccess(true);
+      }
+    } catch (err) {
+      setError("Failed to delete key");
+    }
+  };
+
+  const handleTestConnection = async () => {
+    if (!activeBusiness) return;
+    setIsTestingAI(true);
+    setTestResult(null);
+    try {
+      const accessToken = await getAccessToken();
+      const res = await fetch(`/api/businesses/${activeBusiness.id}/test-ai`, { 
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${accessToken}` }
+      });
+      const data = await res.json();
+      setTestResult(data);
+    } catch (err) {
+      setTestResult({ status: 'failed', message: 'Network error' });
+    } finally {
+      setIsTestingAI(false);
+    }
+  };
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -48,9 +152,13 @@ export const SettingsPage: React.FC = () => {
     setSuccess(false);
 
     try {
+      const accessToken = await getAccessToken();
       const response = await fetch(`/api/businesses/${activeBusiness.id}`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${accessToken}`
+        },
         body: JSON.stringify({
           name: name,
           config: { 
@@ -133,7 +241,95 @@ export const SettingsPage: React.FC = () => {
             <div className="card-header">
               <MessageSquare size={20} className="icon-green" />
               <div>
-                <h3>AI Instructions (System Prompt)</h3>
+                <h3>AI Intelligence</h3>
+                <p>Configure the AI engine that powers your bot.</p>
+              </div>
+            </div>
+            <div className="card-body">
+              <div className="form-group">
+                <label>AI Provider</label>
+                <select 
+                  value={aiProvider} 
+                  onChange={(e) => setAiProvider(e.target.value)}
+                  className="provider-select"
+                >
+                  <option value="gemini">Google Gemini (Recommended)</option>
+                  <option value="ollama">Ollama (Self-hosted / Advanced)</option>
+                </select>
+                <p className="help-text">
+                  Gemini is fast and reliable for most users. Ollama requires your own GPU server.
+                </p>
+              </div>
+
+              {aiProvider === 'gemini' && (
+                <div className="provider-settings">
+                  <div className="form-group">
+                    <label>Gemini API Key</label>
+                    <div className="input-with-action">
+                      <input 
+                        type="password" 
+                        value={geminiApiKey} 
+                        onChange={(e) => setGeminiApiKey(e.target.value)} 
+                        placeholder={hasGeminiKey ? maskedGeminiKey : "Enter your API Key"}
+                      />
+                      {hasGeminiKey && (
+                        <button className="text-btn danger" onClick={handleDeleteKey}>Remove Key</button>
+                      )}
+                    </div>
+                    <p className="help-text">
+                      Get a free key from <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noreferrer">Google AI Studio <ExternalLink size={10}/></a>
+                    </p>
+                  </div>
+
+                  {!hasGeminiKey && geminiApiKey && (
+                    <div className="privacy-confirm">
+                      <label className="checkbox-label">
+                        <input 
+                          type="checkbox" 
+                          checked={privacyConsent} 
+                          onChange={(e) => setPrivacyConsent(e.target.checked)} 
+                        />
+                        <span>I understand my API key will be <a href="/privacy" target="_blank">stored securely</a> and used only for my requests.</span>
+                      </label>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <div className="form-group">
+                <label>Model Name (Optional Override)</label>
+                <input 
+                  type="text" 
+                  value={llmModelOverride} 
+                  onChange={(e) => setLlmModelOverride(e.target.value)} 
+                  placeholder={aiProvider === 'gemini' ? "e.g. gemini-1.5-flash" : "e.g. llama3"}
+                />
+              </div>
+
+              <div className="action-row">
+                <button className="secondary-btn" onClick={handleTestConnection} disabled={isTestingAI}>
+                  {isTestingAI ? 'Testing...' : 'Test Connection'}
+                </button>
+                <button className="primary-btn sm" onClick={handleSaveAISettings} disabled={isSaving}>
+                  Save AI Settings
+                </button>
+              </div>
+
+              {testResult && (
+                <div className={`test-feedback ${testResult.status}`}>
+                  {testResult.status === 'success' ? <CheckCircle size={14} /> : <AlertCircle size={14} />}
+                  <span>{testResult.message}</span>
+                </div>
+              )}
+            </div>
+          </section>
+
+          {/* Section 3: AI Instructions */}
+          <section className="settings-card">
+            <div className="card-header">
+              <MessageSquare size={20} className="icon-blue" />
+              <div>
+                <h3>System Instructions</h3>
                 <p>Define your bot's personality, tone, and rules.</p>
               </div>
             </div>

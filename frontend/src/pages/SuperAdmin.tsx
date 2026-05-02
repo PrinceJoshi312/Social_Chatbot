@@ -1,13 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
-  Users, 
   Building2, 
   MessageSquare, 
   Activity, 
-  Search,
   ArrowUpRight,
-  TrendingUp,
   Globe,
   Loader2
 } from 'lucide-react';

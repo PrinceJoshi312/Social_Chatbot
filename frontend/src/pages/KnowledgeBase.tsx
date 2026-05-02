@@ -1,7 +1,9 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useBusiness } from '../context/BusinessContext';
-import { Upload, FileText, Trash2, CheckCircle, AlertCircle, Loader2, Globe, Link as LinkIcon, Search } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
+import { Upload, FileText, Trash2, Loader2, Globe, Link as LinkIcon, Search } from 'lucide-react';
 import { toast } from 'react-hot-toast';
+import { Modal } from '../components/Modal';
 import './KnowledgeBase.css';
 
 interface Document {
@@ -12,9 +14,14 @@ interface Document {
 
 export const KnowledgeBase: React.FC = () => {
   const { activeBusiness } = useBusiness();
+  console.log("[DEBUG] KnowledgeBase activeBusiness:", activeBusiness);
+  const { getAccessToken } = useAuth();
   const [documents, setDocuments] = useState<Document[]>([]);
   const [isUploading, setIsUploading] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  
+  // Confirmation state
+  const [confirmDelete, setConfirmDelete] = useState<{id: number, filename: string} | null>(null);
   
   // Crawler State
   const [url, setUrl] = useState('');
@@ -23,7 +30,7 @@ export const KnowledgeBase: React.FC = () => {
   const fetchDocuments = useCallback(async () => {
     if (!activeBusiness) return;
     setIsLoading(true);
-    const token = localStorage.getItem('token');
+    const token = await getAccessToken();
     try {
       const response = await fetch(`/api/documents/?business_id=${activeBusiness.id}`, {
         headers: { 'Authorization': `Bearer ${token}` }
@@ -32,7 +39,7 @@ export const KnowledgeBase: React.FC = () => {
       setDocuments(data);
     } catch (err) { toast.error("Failed to load data"); }
     finally { setIsLoading(false); }
-  }, [activeBusiness]);
+  }, [activeBusiness, getAccessToken]);
 
   useEffect(() => { fetchDocuments(); }, [fetchDocuments]);
 
@@ -41,7 +48,7 @@ export const KnowledgeBase: React.FC = () => {
     const file = e.target.files[0];
     const formData = new FormData();
     formData.append('file', file);
-    const token = localStorage.getItem('token');
+    const token = await getAccessToken();
     const loadToast = toast.loading(`Uploading ${file.name}...`);
     setIsUploading(true);
     try {
@@ -53,8 +60,10 @@ export const KnowledgeBase: React.FC = () => {
       if (res.ok) {
         await fetchDocuments();
         toast.success("Document indexed!", { id: loadToast });
+      } else {
+        toast.error("Upload failed", { id: loadToast });
       }
-    } catch (err) { toast.error("Upload failed", { id: loadToast }); }
+    } catch (err) { toast.error("Upload error", { id: loadToast }); }
     finally { setIsUploading(false); e.target.value = ''; }
   };
 
@@ -63,7 +72,7 @@ export const KnowledgeBase: React.FC = () => {
     if (!url.trim() || !activeBusiness) return;
     
     setIsCrawling(true);
-    const token = localStorage.getItem('token');
+    const token = await getAccessToken();
     const loadToast = toast.loading(`Crawling ${url}...`);
     
     try {
@@ -88,10 +97,13 @@ export const KnowledgeBase: React.FC = () => {
     finally { setIsCrawling(false); }
   };
 
-  const handleDelete = async (id: number, filename: string) => {
-    if (!window.confirm(`Delete "${filename}"?`)) return;
-    const token = localStorage.getItem('token');
-    const loadToast = toast.loading('Deleting...');
+  const handleDelete = async () => {
+    if (!confirmDelete) return;
+    const { id, filename } = confirmDelete;
+    setConfirmDelete(null);
+
+    const token = await getAccessToken();
+    const loadToast = toast.loading(`Deleting ${filename}...`);
     try {
       const res = await fetch(`/api/documents/${id}`, {
         method: 'DELETE',
@@ -99,7 +111,9 @@ export const KnowledgeBase: React.FC = () => {
       });
       if (res.ok) {
         await fetchDocuments();
-        toast.success('Deleted', { id: loadToast });
+        toast.success('Deleted successfully', { id: loadToast });
+      } else {
+        toast.error("Delete failed", { id: loadToast });
       }
     } catch (err) { toast.error("Error", { id: loadToast }); }
   };
@@ -129,7 +143,7 @@ export const KnowledgeBase: React.FC = () => {
         {/* WEB CRAWLER */}
         <div className="crawler-section">
           <h3 style={{ marginBottom: '1rem', fontSize: '1rem', fontWeight: '700' }}>🌐 Connect Website</h3>
-          <form onSubmit={handleCrawl} className="crawl-card" style={{ height: '160px', background: 'white', border: '2px dashed var(--border)', borderRadius: '16px', display: 'flex', flex_direction: 'column', alignItems: 'center', justifyContent: 'center', padding: '1.5rem', gap: '1rem' }}>
+          <form onSubmit={handleCrawl} className="crawl-card" style={{ height: '160px', background: 'white', border: '2px dashed var(--border)', borderRadius: '16px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '1.5rem', gap: '1rem' }}>
              <div style={{ position: 'relative', width: '100%' }}>
                 <LinkIcon size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }} />
                 <input 
@@ -182,7 +196,7 @@ export const KnowledgeBase: React.FC = () => {
                     </td>
                     <td>{new Date(doc.created_at).toLocaleDateString()}</td>
                     <td>
-                      <button className="btn-icon delete" onClick={() => handleDelete(doc.id, doc.filename)}><Trash2 size={18} /></button>
+                      <button className="btn-icon delete" onClick={() => setConfirmDelete({id: doc.id, filename: doc.filename})}><Trash2 size={18} /></button>
                     </td>
                   </tr>
                 ))}
@@ -191,6 +205,22 @@ export const KnowledgeBase: React.FC = () => {
           </div>
         )}
       </section>
+
+      <Modal 
+        isOpen={!!confirmDelete} 
+        onClose={() => setConfirmDelete(null)} 
+        title="Remove Knowledge Source"
+      >
+        <div style={{ padding: '0.5rem 0' }}>
+          <p style={{ color: '#475569', marginBottom: '1.5rem' }}>
+            Are you sure you want to delete <strong>{confirmDelete?.filename}</strong>? The bot will no longer be able to answer questions using this data.
+          </p>
+          <div style={{ display: 'flex', gap: '1rem', justifyContent: 'flex-end' }}>
+            <button className="secondary-btn" onClick={() => setConfirmDelete(null)}>Cancel</button>
+            <button className="primary-btn" style={{ backgroundColor: '#dc2626', borderColor: '#dc2626' }} onClick={handleDelete}>Delete Source</button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 };

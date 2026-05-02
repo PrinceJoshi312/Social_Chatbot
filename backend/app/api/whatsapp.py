@@ -97,7 +97,14 @@ async def process_whatsapp_rag(from_number: str, text: str, phone_number_id: str
     tool_registry = ToolRegistry(db, business.id)
 
     # 3. Generate Answer
-    answer, tool_metadata = await llm_service.generate_response(system_prompt, context, text, tool_registry)
+    answer, tool_metadata = await llm_service.generate_response(
+        system_prompt, 
+        context, 
+        text, 
+        db=db, 
+        business_id=business.id, 
+        tool_registry=tool_registry
+    )
 
     # 4. Telemetry
     track_query(db, business.id, text, answer, context)

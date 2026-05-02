@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { useAuth } from './AuthContext';
 
 interface Business {
   id: number;
@@ -18,33 +19,44 @@ interface BusinessContextType {
 const BusinessContext = createContext<BusinessContextType | undefined>(undefined);
 
 export const BusinessProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { getAccessToken, isAuthenticated, loading: authLoading } = useAuth();
   const [activeBusiness, setActiveBusiness] = useState<Business | null>(null);
   const [businesses, setBusinesses] = useState<Business[]>([]);
   const [loading, setLoading] = useState(true);
 
   const refreshBusinesses = useCallback(async () => {
-    const token = localStorage.getItem('token');
+    if (authLoading || !isAuthenticated) {
+      if (!authLoading) setLoading(false);
+      return;
+    }
+
+    const token = await getAccessToken();
     if (!token) {
       setLoading(false);
       return;
     }
 
     try {
+      console.log("[DEBUG] Fetching businesses...");
       const res = await fetch('/api/businesses/', {
         headers: { 'Authorization': `Bearer ${token}` }
       });
+      console.log("[DEBUG] Businesses status:", res.status);
       if (res.status === 401) {
-        localStorage.removeItem('token');
-        // Avoid hard redirect in provider to prevent infinite loop on login page
+        console.warn("[DEBUG] 401 Unauthorized - Token may be invalid");
         return;
       }
       const data = await res.json();
+      console.log("[DEBUG] Businesses received:", data);
       setBusinesses(data);
       
-      // Use functional state update to avoid dependency on activeBusiness
       setActiveBusiness(prev => {
         if (data.length > 0 && !prev) {
           return data[0];
+        }
+        // If activeBusiness was set but no longer in data, reset to first or null
+        if (prev && !data.find((b: Business) => b.id === prev.id)) {
+            return data[0] || null;
         }
         return prev;
       });
@@ -53,11 +65,19 @@ export const BusinessProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     } finally {
       setLoading(false);
     }
-  }, []); // Remove activeBusiness dependency
+  }, [getAccessToken]);
 
   useEffect(() => {
     refreshBusinesses();
   }, [refreshBusinesses]);
+
+  // Re-fetch when token changes (e.g. after login)
+  useEffect(() => {
+    const token = localStorage.getItem('token');
+    if (token && businesses.length === 0) {
+      refreshBusinesses();
+    }
+  }, [businesses.length, refreshBusinesses]);
 
   return (
     <BusinessContext.Provider value={{ 

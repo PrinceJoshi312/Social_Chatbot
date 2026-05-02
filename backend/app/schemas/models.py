@@ -4,15 +4,20 @@ from typing import Optional, Dict, Any, List
 
 class UserBase(BaseModel):
     email: EmailStr
+    firebase_uid: Optional[str] = None
+    display_name: Optional[str] = None
+    photo_url: Optional[str] = None
+    provider: Optional[str] = "password"
 
 class UserCreate(UserBase):
-    password: str
+    password: Optional[str] = None
 
 class User(UserBase):
     id: int
     role: str
     is_active: bool
     created_at: datetime
+    last_login: datetime
     class Config:
         from_attributes = True
 

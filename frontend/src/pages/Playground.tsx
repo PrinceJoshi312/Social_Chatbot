@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useBusiness } from '../context/BusinessContext';
-import { Send, Bot, Info, Search, MoreVertical, Paperclip, Loader2, Clock } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
+import { Send, Bot, Paperclip, Clock } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import './Playground.css';
 
@@ -13,6 +14,7 @@ interface Message {
 
 export const Playground: React.FC = () => {
   const { activeBusiness } = useBusiness();
+  const { getAccessToken } = useAuth();
   const [input, setInput] = useState('');
   const [messages, setMessages] = useState<Message[]>([
     { 
@@ -24,7 +26,7 @@ export const Playground: React.FC = () => {
   
   const [isLoading, setIsLoading] = useState(false);
   const [pendingQueue, setPendingQueue] = useState<string[]>([]);
-  const [showContext, setShowContext] = useState<number | null>(null);
+  const [showContext] = useState<number | null>(null);
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const scrollToBottom = () => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -63,7 +65,7 @@ export const Playground: React.FC = () => {
 
   const executeMessage = async (query: string) => {
     setIsLoading(true);
-    const token = localStorage.getItem('token');
+    const token = await getAccessToken();
 
     try {
       const response = await fetch('/api/query/', {

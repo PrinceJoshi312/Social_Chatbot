@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useBusiness } from '../context/BusinessContext';
+import { useAuth } from '../context/AuthContext';
 import { MessageSquare, Zap, Activity, Clock, FileText, Loader2, BarChart3 } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import './Dashboard.css';
@@ -14,6 +15,7 @@ interface DashboardStats {
 
 export const Dashboard: React.FC = () => {
   const { activeBusiness, loading: contextLoading } = useBusiness();
+  const { getAccessToken } = useAuth();
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
@@ -23,18 +25,21 @@ export const Dashboard: React.FC = () => {
       return;
     }
     
-    setIsLoading(true);
-    const token = localStorage.getItem('token');
-    fetch(`/api/analytics/stats/${activeBusiness.id}`, {
-      headers: { 'Authorization': `Bearer ${token}` }
-    })
-      .then(res => res.json())
-      .then(data => {
-        setStats(data);
-        setIsLoading(false);
-      })
-      .catch(() => setIsLoading(false));
-  }, [activeBusiness]);
+    const fetchStats = async () => {
+        setIsLoading(true);
+        const token = await getAccessToken();
+        fetch(`/api/analytics/stats/${activeBusiness.id}`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        })
+          .then(res => res.json())
+          .then(data => {
+            setStats(data);
+            setIsLoading(false);
+          })
+          .catch(() => setIsLoading(false));
+    };
+    fetchStats();
+  }, [activeBusiness, getAccessToken]);
 
   // If the context is still loading businesses, show loading
   if (contextLoading) return <div className="loading-state"><Loader2 className="spin" /> <span>Syncing Organization...</span></div>;

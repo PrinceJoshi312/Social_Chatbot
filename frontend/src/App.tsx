@@ -8,16 +8,21 @@ import { Playground } from './pages/Playground';
 import { SettingsPage } from './pages/Settings';
 import { SuperAdminPage } from './pages/SuperAdmin';
 import { AllBusinessesPage } from './pages/Admin';
+import { PlatformSecurityPage } from './pages/PlatformSecurity';
 import { LoginPage } from './pages/Login';
 import { BillingPage } from './pages/Billing';
 import { HelpPage } from './pages/Help';
+import { PrivacyPage } from './pages/Privacy';
 import { BusinessProvider } from './context/BusinessContext';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import { Toaster } from 'react-hot-toast';
 import './App.css';
 
 // Guard for Private Routes
 const ProtectedRoute = ({ children, adminOnly = false }: { children: React.ReactNode, adminOnly?: boolean }) => {
-  const { isAuthenticated, isAdmin } = useAuth();
+  const { isAuthenticated, isAdmin, loading } = useAuth();
+  
+  if (loading) return null; // Or a loading spinner
   if (!isAuthenticated) return <Navigate to="/login" replace />;
   if (adminOnly && !isAdmin) return <Navigate to="/dashboard" replace />;
   return <>{children}</>;
@@ -25,7 +30,9 @@ const ProtectedRoute = ({ children, adminOnly = false }: { children: React.React
 
 // Guard for Login/Signup ONLY (redirect if already logged in)
 const AuthPageGuard = ({ children }: { children: React.ReactNode }) => {
-  const { isAuthenticated, isAdmin } = useAuth();
+  const { isAuthenticated, isAdmin, loading } = useAuth();
+  
+  if (loading) return null;
   if (isAuthenticated) {
     return isAdmin ? <Navigate to="/admin" replace /> : <Navigate to="/dashboard" replace />;
   }
@@ -49,10 +56,12 @@ function AppRoutes() {
       <Route path="/billing" element={<ProtectedRoute><Layout><BillingPage /></Layout></ProtectedRoute>} />
       <Route path="/help" element={<ProtectedRoute><Layout><HelpPage /></Layout></ProtectedRoute>} />
       <Route path="/settings" element={<ProtectedRoute><Layout><SettingsPage /></Layout></ProtectedRoute>} />
+      <Route path="/privacy" element={<PrivacyPage />} />
       
       {/* 4. Admin Specific */}
       <Route path="/admin" element={<ProtectedRoute adminOnly><Layout><SuperAdminPage /></Layout></ProtectedRoute>} />
       <Route path="/admin/businesses" element={<ProtectedRoute adminOnly><Layout><AllBusinessesPage /></Layout></ProtectedRoute>} />
+      <Route path="/admin/security" element={<ProtectedRoute adminOnly><Layout><PlatformSecurityPage /></Layout></ProtectedRoute>} />
 
       {/* 5. Fallback */}
       <Route path="*" element={<Navigate to="/" replace />} />
@@ -65,6 +74,7 @@ function App() {
     <Router>
       <AuthProvider>
         <BusinessProvider>
+          <Toaster position="top-right" />
           <AppRoutes />
         </BusinessProvider>
       </AuthProvider>

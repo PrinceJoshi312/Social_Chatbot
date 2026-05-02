@@ -1,17 +1,21 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useBusiness } from '../context/BusinessContext';
-import { Building2, Search, ExternalLink, Trash2, Mail, CreditCard, Loader2 } from 'lucide-react';
+import { Building2, Search, ExternalLink, Trash2, Mail, CreditCard } from 'lucide-react';
 import { toast } from 'react-hot-toast';
+import { Modal } from '../components/Modal';
 import './KnowledgeBase.css';
 
 export const AllBusinessesPage: React.FC = () => {
   const { businesses, refreshBusinesses, setActiveBusiness } = useBusiness();
+  const navigate = useNavigate();
   const [searchTerm, setSearchTerm] = useState('');
+  const [confirmDelete, setConfirmDelete] = useState<{id: number, name: string} | null>(null);
 
   // Auto-refresh when page loads
   useEffect(() => {
     refreshBusinesses();
-  }, []);
+  }, [refreshBusinesses]);
 
   // BULLETPROOF FILTERING
   const filteredBusinesses = businesses.filter(b => {
@@ -21,11 +25,13 @@ export const AllBusinessesPage: React.FC = () => {
     return nameMatch || emailMatch;
   });
 
-  const handleDeleteBusiness = async (id: number, name: string) => {
-    if (!window.confirm(`Delete account "${name}"?`)) return;
+  const handleDeleteBusiness = async () => {
+    if (!confirmDelete) return;
+    const { id, name } = confirmDelete;
+    setConfirmDelete(null);
     
     const token = localStorage.getItem('token');
-    const loadingToast = toast.loading('Removing client...');
+    const loadingToast = toast.loading(`Removing ${name}...`);
     try {
       const response = await fetch(`/api/businesses/${id}`, { 
         method: 'DELETE',
@@ -34,6 +40,8 @@ export const AllBusinessesPage: React.FC = () => {
       if (response.ok) {
         await refreshBusinesses();
         toast.success(`Client removed.`, { id: loadingToast });
+      } else {
+        toast.error("Failed to delete", { id: loadingToast });
       }
     } catch (err) { toast.error("Error", { id: loadingToast }); }
   };
@@ -41,6 +49,7 @@ export const AllBusinessesPage: React.FC = () => {
   const handleSwitchToBot = (biz: any) => {
     setActiveBusiness(biz);
     toast.success(`Managing ${biz.owner_email}`, { icon: '🤖' });
+    navigate('/dashboard');
   };
 
   return (
@@ -109,7 +118,7 @@ export const AllBusinessesPage: React.FC = () => {
                       <button className="btn-icon" title="View Console" onClick={() => handleSwitchToBot(biz)}>
                         <ExternalLink size={16} />
                       </button>
-                      <button className="btn-icon delete" title="Delete" onClick={() => handleDeleteBusiness(biz.id, biz.name)}>
+                      <button className="btn-icon delete" title="Delete" onClick={() => setConfirmDelete({id: biz.id, name: biz.name})}>
                         <Trash2 size={16} />
                       </button>
                     </div>
@@ -127,6 +136,22 @@ export const AllBusinessesPage: React.FC = () => {
           </table>
         </div>
       </section>
+
+      <Modal 
+        isOpen={!!confirmDelete} 
+        onClose={() => setConfirmDelete(null)} 
+        title="Confirm Deletion"
+      >
+        <div style={{ padding: '0.5rem 0' }}>
+          <p style={{ color: '#475569', marginBottom: '1.5rem' }}>
+            Are you sure you want to delete <strong>{confirmDelete?.name}</strong>? This action cannot be undone.
+          </p>
+          <div style={{ display: 'flex', gap: '1rem', justifyContent: 'flex-end' }}>
+            <button className="secondary-btn" onClick={() => setConfirmDelete(null)}>Cancel</button>
+            <button className="primary-btn" style={{ backgroundColor: '#dc2626', borderColor: '#dc2626' }} onClick={handleDeleteBusiness}>Delete Account</button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 };

@@ -1,6 +1,6 @@
 import React from 'react';
 import { FAQ } from '../components/FAQ';
-import { MessageCircle, Mail, Globe } from 'lucide-react';
+import { MessageCircle, Mail } from 'lucide-react';
 
 export const HelpPage: React.FC = () => {
   return (

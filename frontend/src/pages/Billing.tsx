@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useBusiness } from '../context/BusinessContext';
-import { Check, Zap, Shield, Star, Rocket, Loader2, Bot } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
+import { Check, Shield, Star, Rocket, Loader2 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { Modal } from '../components/Modal';
 import './Billing.css';
@@ -15,28 +16,40 @@ interface Plan {
 
 export const BillingPage: React.FC = () => {
   const { activeBusiness, refreshBusinesses, loading: contextLoading } = useBusiness();
+  const { getAccessToken, isAuthenticated, loading: authLoading } = useAuth();
   const [plans, setPlans] = useState<Plan[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  
+
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedPlan, setSelectedPlan] = useState<Plan | null>(null);
   const [botName, setBotName] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
-    const token = localStorage.getItem('token');
-    if (!token) return;
+    const fetchPlans = async () => {
+      if (authLoading || !isAuthenticated) return;
 
-    fetch('/api/plans/', {
-      headers: { 'Authorization': `Bearer ${token}` }
-    })
-      .then(res => res.json())
-      .then(data => {
+      try {
+        const token = await getAccessToken();
+        if (!token) {
+          setIsLoading(false);
+          return;
+        }
+
+        const res = await fetch('/api/plans/', {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        const data = await res.json();
         setPlans(data);
+      } catch (err) {
+        console.error("Failed to fetch plans", err);
+      } finally {
         setIsLoading(false);
-      })
-      .catch(() => setIsLoading(false));
-  }, []);
+      }
+    };
+    fetchPlans();
+  }, [getAccessToken, isAuthenticated, authLoading]);
+
 
   const openNamingModal = (plan: Plan) => {
     setSelectedPlan(plan);
@@ -49,28 +62,79 @@ export const BillingPage: React.FC = () => {
     if (!selectedPlan || !botName.trim()) return;
 
     setIsSubmitting(true);
-    const token = localStorage.getItem('token');
-    const loadingToast = toast.loading(`Activating ${selectedPlan.name}...`);
+    const token = await getAccessToken();
+    const loadingToast = toast.loading(`Preparing payment for ${selectedPlan.name}...`);
 
     try {
-      const response = await fetch('/api/subscribe/', {
+      const response = await fetch(`/api/create-razorpay-order/?plan_id=${selectedPlan.id}&bot_name=${encodeURIComponent(botName)}`, {
         method: 'POST',
         headers: { 
-          'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({ plan_id: selectedPlan.id, bot_name: botName })
+        }
       });
 
-      if (response.ok) {
-        toast.success(`Plan activated!`, { id: loadingToast });
-        await refreshBusinesses();
-        setIsModalOpen(false);
-      } else {
-        toast.error("Error", { id: loadingToast });
+      const orderData = await response.json();
+
+      if (!response.ok) {
+        throw new Error(orderData.detail || "Error creating order");
       }
-    } catch (err) {
-      toast.error("Error", { id: loadingToast });
+
+      const options = {
+        key: orderData.key,
+        amount: orderData.amount,
+        currency: orderData.currency,
+        name: "SocialLink",
+        description: `${selectedPlan.name} Plan - ${botName}`,
+        order_id: orderData.order_id,
+        handler: async function (rzpResponse: any) {
+          toast.success("Payment successful! Verifying...", { id: loadingToast });
+          
+          try {
+            const freshToken = await getAccessToken();
+            const verifyRes = await fetch('/api/verify-razorpay-payment/', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${freshToken}`
+              },
+              body: JSON.stringify({
+                razorpay_order_id: rzpResponse.razorpay_order_id,
+                razorpay_payment_id: rzpResponse.razorpay_payment_id,
+                razorpay_signature: rzpResponse.razorpay_signature,
+                plan_id: selectedPlan.id,
+                bot_name: botName
+              })
+            });
+
+            if (verifyRes.ok) {
+              toast.success("Subscription activated!", { id: loadingToast });
+              await refreshBusinesses();
+              setIsModalOpen(false);
+            } else {
+              const errorData = await verifyRes.json();
+              toast.error(errorData.detail || "Verification failed", { id: loadingToast });
+            }
+          } catch (err) {
+            toast.error("Verification connection error", { id: loadingToast });
+          }
+        },
+        prefill: {
+          name: orderData.user.name,
+          email: orderData.user.email,
+        },
+        theme: {
+          color: "#2563eb",
+        },
+      };
+
+      const rzp = new (window as any).Razorpay(options);
+      rzp.on('payment.failed', function (response: any) {
+        toast.error(`Payment failed: ${response.error.description}`);
+      });
+      rzp.open();
+      toast.dismiss(loadingToast);
+    } catch (err: any) {
+      toast.error(err.message || "Network error. Please try again.", { id: loadingToast });
     } finally {
       setIsSubmitting(false);
     }
@@ -83,7 +147,7 @@ export const BillingPage: React.FC = () => {
       <header className="page-header">
         <div className="header-info">
           <h1>Plans & Subscriptions</h1>
-          <p>Choose a plan to power your WhatsApp assistant.</p>
+          <p>Choose a plan to power your SocialLink assistant.</p>
         </div>
       </header>
 

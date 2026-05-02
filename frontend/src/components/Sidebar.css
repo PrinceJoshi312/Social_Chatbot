@@ -7,21 +7,6 @@
   margin-bottom: 1.5rem;
 }
 
-.profile-avatar {
-  width: 36px;
-  height: 36px;
-  background: var(--primary-dark);
-  color: white;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-weight: 800;
-  font-size: 0.9rem;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-  flex-shrink: 0;
-}
-
 .profile-info {
   display: flex;
   flex-direction: column;

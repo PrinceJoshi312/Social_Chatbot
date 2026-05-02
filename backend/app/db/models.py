@@ -9,10 +9,15 @@ class User(Base):
     __tablename__ = "users"
     id = Column(Integer, primary_key=True, index=True)
     email = Column(String, unique=True, index=True, nullable=False)
-    hashed_password = Column(String, nullable=False)
+    firebase_uid = Column(String, unique=True, index=True, nullable=True)
+    hashed_password = Column(String, nullable=True)
+    display_name = Column(String, nullable=True)
+    photo_url = Column(String, nullable=True)
+    provider = Column(String, default="password")
     role = Column(String, default="business_owner") # super_admin, business_owner
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
+    last_login = Column(DateTime, default=datetime.utcnow)
 
     owned_businesses = relationship("Business", back_populates="owner")
 
@@ -47,6 +52,18 @@ class Business(Base):
     api_key = Column(String, unique=True, index=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     config = Column(JSON, default={})
+    
+    # Crawl Metadata
+    last_crawled_at = Column(DateTime, nullable=True)
+    last_crawl_status = Column(String, nullable=True) # success, failed, skipped
+    crawl_failure_count = Column(Integer, default=0)
+    content_hash = Column(String, nullable=True)
+    last_content_hash = Column(String, nullable=True)
+
+    # AI Settings
+    ai_provider = Column(String, default="gemini") # gemini, ollama
+    encrypted_gemini_api_key = Column(String, nullable=True)
+    llm_model_override = Column(String, nullable=True) # Override default model per business
 
     owner = relationship("User", back_populates="owned_businesses")
     subscription = relationship("Subscription", back_populates="business", uselist=False)
@@ -56,6 +73,22 @@ class Business(Base):
     bookings = relationship("Booking", back_populates="business", cascade="all, delete-orphan")
     messages = relationship("Message", back_populates="business", cascade="all, delete-orphan")
     events = relationship("AnalyticsEvent", back_populates="business", cascade="all, delete-orphan")
+    crawl_jobs = relationship("CrawlJob", back_populates="business", cascade="all, delete-orphan")
+
+class CrawlJob(Base):
+    __tablename__ = "crawl_jobs"
+    id = Column(Integer, primary_key=True, index=True)
+    business_id = Column(Integer, ForeignKey("businesses.id"))
+    status = Column(String, default="pending") # pending, running, success, failed, skipped
+    attempts = Column(Integer, default=0)
+    max_attempts = Column(Integer, default=3)
+    error_message = Column(Text, nullable=True)
+    started_at = Column(DateTime, nullable=True)
+    finished_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    business = relationship("Business", back_populates="crawl_jobs")
 
 class Document(Base):
     __tablename__ = "documents"
