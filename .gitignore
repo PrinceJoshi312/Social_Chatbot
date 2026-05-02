@@ -10,6 +10,7 @@ backend/.env
 backend/*.db
 *.sqlite3
 
+
 # Node
 node_modules/
 frontend/node_modules/
@@ -18,16 +19,19 @@ frontend/dist/
 dist-ssr/
 *.local
 
+
 # RAG Storage
 storage/
 backend/storage/
 backend/chroma_db/
+
 
 # IDEs
 .vscode/
 .idea/
 *.swp
 *.swo
+
 
 # OS
 .DS_Store
