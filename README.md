@@ -173,6 +173,19 @@ ollama pull llama3
 
 ---
 
+## Preview
+
+**Home**
+
+![home](./assets/home.png)
+**Super_Admin**
+
+![superadmin](./assets/superadmin.png)
+**User**
+
+![user](./assets/user.png)
+
+---
 ## 🤝 Contributing
 Contributions are welcome! Please feel free to submit a Pull Request.
 
